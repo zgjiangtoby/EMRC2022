@@ -1,6 +1,7 @@
-from configs.config import *
 import tqdm
 import json
+import argparse
+from transformers import AutoTokenizer, AutoModel
 
 
 def find_max_evidence(lst):
@@ -41,7 +42,7 @@ def data_loader(path, if_evidence=True):
                 new_data.append(new_dict)
     return new_data
 
-def preprocess_function(examples, if_evidence=True):
+def preprocess_function(examples, model, if_evidence=True):
     data_iter = tqdm.tqdm(enumerate(examples),
                           desc="%s" % ("Preprocessing data"),
                           total=len(examples),
@@ -53,21 +54,21 @@ def preprocess_function(examples, if_evidence=True):
     for i, example in data_iter:
         input = {}
         input['id'] = example['id']
-        q_input = Config.tokenizer(
+        q_input = tokenizer(
             example['question'],
             max_length=512,
             truncation=True,
             padding="max_length",
             return_tensors='pt'
         ).to(device)
-        c_input = Config.tokenizer(
+        c_input = tokenizer(
             example['context'],
             max_length=512,
             truncation=True,
             padding="max_length",
             return_tensors='pt'
         ).to(device)
-        embedder = Config.embedder.to(device)
+        embedder = model.to(device)
 
         q_embedding = embedder(**q_input)
         c_embedding = embedder(**c_input)
@@ -84,9 +85,17 @@ def preprocess_function(examples, if_evidence=True):
             input['evi_start_positions'] = example['context'].find(evidence)
             input['evi_end_positions'] = example['context'].find(evidence) + len(evidence)
 
-        with open(Config.preprocessed_data_path + "/{}.json".format(example['id']), 'w') as out_file:
+        with open(args.output + "/{}.json".format(example['id']), 'w') as out_file:
             json.dump(input, out_file)
 
 if __name__ == "__main__":
-        data = data_loader(Config.data_path)
-        preprocess_function(data)
+        parser = argparse.ArgumentParser(description="help")
+        parser.add_argument("--data_path", type=str, help="this is your data directory")
+        parser.add_argument("--model_path", type=str, help="this is your model directory")
+        parser.add_argument("--output", type=str, help="this is where your output going")
+        args = parser.parse_args()
+
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        embedder = AutoModel.from_pretrained(args.model_path)
+        data = data_loader(args.data_path)
+        preprocess_function(data, embedder)
