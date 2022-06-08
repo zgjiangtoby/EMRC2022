@@ -3,6 +3,17 @@ import json
 import argparse
 from transformers import AutoTokenizer, AutoModel
 
+def xrange(x):
+    return iter(range(x))
+
+def contains(small, big):
+    for i in xrange(len(big)-len(small)+1):
+        for j in xrange(len(small)):
+            if big[i+j] != small[j]:
+                break
+        else:
+            return i, i+len(small)
+    return 0, 0
 
 def find_max_evidence(lst):
     count = 0
@@ -66,27 +77,36 @@ def preprocess_function(examples, model, if_evidence=True):
             max_length=512,
             truncation=True,
             padding="max_length",
+            return_offsets_mapping=True,
             return_tensors='pt'
         ).to(device)
         embedder = model.to(device)
 
         q_embedding = embedder(**q_input)
+        offset_mapping = c_input.pop("offset_mapping")
         c_embedding = embedder(**c_input)
 
         input['question_embeddings'] = q_embedding['last_hidden_state'].cpu().detach().numpy().tolist()
         input['context_embeddings'] = c_embedding['last_hidden_state'].cpu().detach().numpy().tolist()
 
         answers = example["answer"]
-        input['start_positions'] = answers["answer_start"]
-        input['end_positions'] = answers["answer_start"] + len(answers["text"][0])
+
+        word2idx = c_input['input_ids'].cpu().detach().numpy().tolist()[0]
+
+
+        answer_span = tokenizer.encode(answers["text"])[1:-1]
+        start_position, end_position = contains(answer_span, word2idx)
+        input['start_id'] = start_position
+        input['end_id'] = end_position
 
         if if_evidence:
-            evidence = example['evidence']
-            input['evi_start_positions'] = example['context'].find(evidence)
-            input['evi_end_positions'] = example['context'].find(evidence) + len(evidence)
+            evidence_span = tokenizer.encode(example['evidence'])[1:-1]
+            evi_start_position, evi_end_position = contains(evidence_span, word2idx)
+            input['evi_start_id'] = evi_start_position
+            input['evi_end_id'] = evi_end_position
 
-        with open(args.output + "/{}.json".format(example['id']), 'w') as out_file:
-            json.dump(input, out_file)
+        with open(args.output + "/{}.json".format(input['id']), 'w') as out_file:
+                json.dump(input, out_file)
 
 if __name__ == "__main__":
         parser = argparse.ArgumentParser(description="help")
