@@ -7,3 +7,5 @@ class Config(object):
     heads = 8
     drop_rate = .2
     hidden_dim = 512
+
+    clip = 0.25
