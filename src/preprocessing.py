@@ -92,7 +92,7 @@ def preprocess_function(examples, model, if_evidence=True):
         answers = example["answer"]
 
         word2idx = c_input['input_ids'].cpu().detach().numpy().tolist()[0]
-
+        input['word2idx'] = word2idx
 
         answer_span = tokenizer.encode(answers["text"])[1:-1]
         start_position, end_position = contains(answer_span, word2idx)

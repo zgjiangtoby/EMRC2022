@@ -35,8 +35,10 @@ class QA_1(nn.Module):
         start = self.start(concat).squeeze()
         end = self.end(concat).squeeze()
 
+        start_evi = self.start(concat).squeeze()
+        end_evi = self.start(concat).squeeze()
         # return torch.argmax(start,dim=1), torch.argmax(end,dim=1)
-        return start, end
+        return start, end, start_evi, end_evi
 
 
 
