@@ -10,8 +10,8 @@ import re
 
 writer = SummaryWriter()
 
-def train(train_loader, model, optimizer, device, val_loader=None, tokenizer=None):
 
+def train(train_loader, model, fgm, optimizer, device, val_loader=None, tokenizer=None):
     for e in range(Config.epoch):
         train_loss = 0
         data_iter = tqdm.tqdm(enumerate(train_loader),
@@ -40,6 +40,17 @@ def train(train_loader, model, optimizer, device, val_loader=None, tokenizer=Non
             # backward pass
             loss.backward()
 
+            # =======================================================================================================
+            # 对抗训练
+            fgm.attack()
+            preds_adv = model(c_emb, q_emb)
+            start_pred_adv, end_pred_adv, start_evi_pred_adv, end_evi_pred_adv = preds_adv
+            loss_adv = F.cross_entropy(start_pred_adv, a_start) + F.cross_entropy(end_pred_adv, a_end) + \
+                       F.cross_entropy(start_evi_pred_adv, e_start) + F.cross_entropy(end_evi_pred_adv, e_end)
+            loss_adv.backward()
+            fgm.restore()
+            # =======================================================================================================
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), Config.clip)
             # update the gradients
             optimizer.step()
@@ -49,9 +60,8 @@ def train(train_loader, model, optimizer, device, val_loader=None, tokenizer=Non
 
             train_loss += loss.item()
 
-        writer.add_scalar("epoch_loss/train", train_loss/len(train_loader), e + 1)
+        writer.add_scalar("epoch_loss/train", train_loss / len(train_loader), e + 1)
         valid(model, val_loader, device, tokenizer, e)
-
 
         return model
 
@@ -142,6 +152,7 @@ def valid(model, val_loader, device, tokenizer, epoch):
     return avg_scores(a_f1_scores), avg_scores(e_f1_scores), \
            avg_scores(a_em_scores), avg_scores(e_em_scores)
 
+
 def predict(model, test_loader, device, tokenizer, output_path):
     print("{} files in evaluation.....".format(len(test_loader)))
     valid_loss = 0
@@ -176,24 +187,24 @@ def predict(model, test_loader, device, tokenizer, output_path):
                 e_pred_s = e_pred_start[i]
                 e_pred_e = e_pred_end[i]
 
-
                 answer_id_span = find_span(word2idx=word2idx[i], start=a_pred_s, end=a_pred_e)
                 evi_id_span = find_span(word2idx=word2idx[i], start=e_pred_s, end=e_pred_e)
 
-                a_span = span_decoder(answer_id_span,tokenizer)
-                e_span = span_decoder(evi_id_span,tokenizer)
+                a_span = span_decoder(answer_id_span, tokenizer)
+                e_span = span_decoder(evi_id_span, tokenizer)
 
                 sample['answer'] = a_span
                 sample['evidence'] = e_span
-
 
                 out[id[i]] = sample
                 predictions.update(out)
         with open(output_path, "w") as outfile:
             json.dump(predictions, outfile)
 
+
 def span_decoder(in_span, tokenizer):
     return remove_special_token(tokenizer.decode(in_span))
+
 
 def avg_scores(in_list):
     return 100 * sum(in_list) / len(in_list)
@@ -221,6 +232,7 @@ def f1(truth, prediction, lcs_len):
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
+
 def get_pred_position(start_pred, end_pred, device):
     batch_size, c_len = start_pred.size()
     ls = nn.LogSoftmax(dim=1)
@@ -232,6 +244,7 @@ def get_pred_position(start_pred, end_pred, device):
 
     s_idx = torch.gather(s_idx, 1, e_idx.view(-1, 1)).squeeze()
     return s_idx.cpu().detach().numpy().tolist(), e_idx.cpu().detach().numpy().tolist()
+
 
 def remove_special_token(in_str):
     txt = in_str.lower().split()
@@ -255,13 +268,14 @@ def find_span(word2idx, start, end):
                 break
     return lst
 
+
 def mixed_segmentation(in_str, rm_punc=False):
     in_str = str(in_str).lower().strip()
     segs_out = []
     temp_str = ""
-    sp_char = ['-',':','_','*','^','/','\\','~','`','+','=',
-               'ï¼Œ','ã€‚','ï¼š','ï¼Ÿ','ï¼','â€œ','â€','ï¼›','â€™','ã€Š','ã€‹','â€¦â€¦','Â·','ã€',
-               'ã€Œ','ã€','ï¼ˆ','ï¼‰','ï¼','ï½ž','ã€Ž','ã€']
+    sp_char = ['-', ':', '_', '*', '^', '/', '\\', '~', '`', '+', '=',
+               'ï¼Œ', 'ã€‚', 'ï¼š', 'ï¼Ÿ', 'ï¼', 'â€œ', 'â€', 'ï¼›', 'â€™', 'ã€Š', 'ã€‹', 'â€¦â€¦', 'Â·', 'ã€',
+               'ã€Œ', 'ã€', 'ï¼ˆ', 'ï¼‰', 'ï¼', 'ï½ž', 'ã€Ž', 'ã€']
     for char in in_str:
         if rm_punc and char in sp_char:
             continue
@@ -274,7 +288,7 @@ def mixed_segmentation(in_str, rm_punc=False):
         else:
             temp_str += char
 
-    #handling last part
+    # handling last part
     if temp_str != "":
         ss = nltk.word_tokenize(temp_str)
         segs_out.extend(ss)
@@ -285,9 +299,9 @@ def mixed_segmentation(in_str, rm_punc=False):
 def remove_punctuation(in_str):
     in_str = str(in_str).lower().strip()
 
-    sp_char = ['-',':','_','*','^','/','\\','~','`','+','=',
-               'ï¼Œ','ã€‚','ï¼š','ï¼Ÿ','ï¼','â€œ','â€','ï¼›','â€™','ã€Š','ã€‹','â€¦â€¦','Â·','ã€',
-               'ã€Œ','ã€','ï¼ˆ','ï¼‰','ï¼','ï½ž','ã€Ž','ã€']
+    sp_char = ['-', ':', '_', '*', '^', '/', '\\', '~', '`', '+', '=',
+               'ï¼Œ', 'ã€‚', 'ï¼š', 'ï¼Ÿ', 'ï¼', 'â€œ', 'â€', 'ï¼›', 'â€™', 'ã€Š', 'ã€‹', 'â€¦â€¦', 'Â·', 'ã€',
+               'ã€Œ', 'ã€', 'ï¼ˆ', 'ï¼‰', 'ï¼', 'ï½ž', 'ã€Ž', 'ã€']
     out_segs = []
     for char in in_str:
         if char in sp_char:
@@ -295,6 +309,7 @@ def remove_punctuation(in_str):
         else:
             out_segs.append(char)
     return ''.join(out_segs)
+
 
 def cal_em_score(truth, prediction, tokenizer):
     em = 0
@@ -307,14 +322,14 @@ def cal_em_score(truth, prediction, tokenizer):
 
 # find longest common string
 def find_lcs(s1, s2):
-    m = [[0 for i in range(len(s2)+1)] for j in range(len(s1)+1)]
+    m = [[0 for i in range(len(s2) + 1)] for j in range(len(s1) + 1)]
     mmax = 0
     p = 0
     for i in range(len(s1)):
         for j in range(len(s2)):
             if s1[i] == s2[j]:
-                m[i+1][j+1] = m[i][j]+1
-                if m[i+1][j+1] > mmax:
-                    mmax=m[i+1][j+1]
-                    p=i+1
-    return s1[p-mmax:p], mmax
+                m[i + 1][j + 1] = m[i][j] + 1
+                if m[i + 1][j + 1] > mmax:
+                    mmax = m[i + 1][j + 1]
+                    p = i + 1
+    return s1[p - mmax:p], mmax

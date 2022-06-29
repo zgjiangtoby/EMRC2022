@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from configs.config import Config
 import glob
 import torch
-from model import QA_1
+from model import QA_1, FGM
 from utils import train, predict
 from transformers import AutoTokenizer
 import tqdm
@@ -49,9 +49,12 @@ if __name__ == "__main__":
                               bar_format="{l_bar}{r_bar}")
 
         model = QA_1(config=Config).to(device)
+        # =====================
+        fgm = FGM(model)
+        # =====================
         optimizer = torch.optim.Adam(model.parameters(), betas=(0.8, 0.999), eps=10e-7, weight_decay=3 * 10e-7)
 
-        trained_model = train(train_loader,model, optimizer, device, val_loader, tokenizer)
+        trained_model = train(train_loader, model, fgm, optimizer, device, val_loader, tokenizer)
 
         torch.save(trained_model.state_dict(), "./QA_1.model")
 
