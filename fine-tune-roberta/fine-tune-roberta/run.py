@@ -47,7 +47,7 @@ def find_max_answer(lst):
 
 def data_loader(path, if_evidence=True):
     new_data = []
-    with open(path, 'r') as inf:
+    with open(path, 'r',encoding='utf-8') as inf:
         dataset = json.load(inf)
         for line in dataset['data']:
             line = line['paragraphs'][0]
@@ -168,17 +168,18 @@ def find_span(word2idx, start, end):
 if __name__ == "__main__":
         parser = argparse.ArgumentParser(description="help")
         parser.add_argument("--data_path", type=str, help="this is your data directory")
-        parser.add_argument("--model_path", type=str, help="this is your model directory")
+        parser.add_argument("--ans_model", type=str, help="this is your ans_model directory")
+        parser.add_argument("--evi_model", type=str, help="this is your evi_model directory")
         parser.add_argument("--pred_data", type=str, help="this is your data directory")
         args = parser.parse_args()
         device = torch.device("cuda:0")
         print("Found device: {}".format(device))
-        model = AutoModelForQuestionAnswering.from_pretrained(args.model_path).to(device)
+        model = AutoModelForQuestionAnswering.from_pretrained(args.ans_model).to(device)
         model.to(device)
-        model2 = AutoModelForQuestionAnswering.from_pretrained(args.model_path).to(device)
+        model2 = AutoModelForQuestionAnswering.from_pretrained(args.evi_model).to(device)
         model2.to(device)
 
-        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.ans_model)
         data = data_loader(args.data_path)
         pred_data = data_loader(args.pred_data)
 
@@ -209,7 +210,7 @@ if __name__ == "__main__":
             output_dir="./results",
             evaluation_strategy="no",
             learning_rate=2e-5,
-            per_device_train_batch_size=8,
+            per_device_train_batch_size=4,
             num_train_epochs=3,
             weight_decay=0.01,
             no_cuda=False,

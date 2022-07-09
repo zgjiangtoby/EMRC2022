@@ -11,7 +11,7 @@ import nltk
 SP_CHARS = ['-', ':', '_', '*', '^', '/', '\\', '~', '`', '+', '=', '，', '。', '：', '？', '！', '“', '”', '；', '’', '《',
             '》', '……', '·', '、', '「', '」', '（', '）', '－', '～', '『', '』']
 
-
+nltk.download('punkt')
 def mixed_segmentation(in_str):
     """Compatible with English and Chinese (mixed)"""
     in_str = str(in_str).strip()
