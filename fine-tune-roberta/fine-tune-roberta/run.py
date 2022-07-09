@@ -64,6 +64,26 @@ def data_loader(path, if_evidence=True):
                 new_data.append(new_dict)
     return new_data
 
+def drcd_loader(path):
+    new_data = []
+    with open(path, 'r',encoding='utf-8') as inf:
+        dataset = json.load(inf)
+        for line in dataset:
+
+            new_dict = {}
+            new_dict['id'] = line['id']
+            new_dict['question'] = line['question']
+
+            new_dict['answer'] = line['answer']
+            new_dict['context'] = line['context']
+            try:
+                new_dict['evidence'] = line['evidence']
+            except:
+                continue
+            new_data.append(new_dict)
+
+    return new_data
+
 def preprocess_function(examples, tokenizer):
     data_iter = tqdm.tqdm(enumerate(examples),
                           desc="%s" % ("Preprocessing data"),
@@ -180,7 +200,8 @@ if __name__ == "__main__":
         model2.to(device)
 
         tokenizer = AutoTokenizer.from_pretrained(args.ans_model)
-        data = data_loader(args.data_path)
+        #data = data_loader(args.data_path)
+        data =drcd_loader(args.data_path)
         pred_data = data_loader(args.pred_data)
 
         ids, input_ids, token_type_ids, attention_mask, \
