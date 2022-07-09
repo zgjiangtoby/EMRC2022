@@ -261,7 +261,7 @@ if __name__ == "__main__":
             e_span = span_decoder(evi_id_span, tokenizer)
             sample['answer'] = a_span
             sample['evidence'] = e_span
-            out[dataset['ids'][i]] = sample
+            out[pred_dataset['ids'][i]] = sample
             pred.update(out)
         with open("output.json", "w") as outfile:
             json.dump(pred, outfile, ensure_ascii=False)
