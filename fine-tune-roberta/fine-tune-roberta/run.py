@@ -6,12 +6,8 @@ from datasets import Dataset
 import torch
 from transformers import DefaultDataCollator
 from transformers import AutoModelForQuestionAnswering, TrainingArguments, Trainer
-from sklearn.model_selection import train_test_split
-import collections
-import numpy as np
+import os
 from torch import nn
-from datasets import load_metric
-
 
 
 def xrange(x):
@@ -175,6 +171,14 @@ def remove_special_token(in_str):
 
     return ''.join(out_segs)
 
+def t_or_f(arg):
+    ua = str(arg).upper()
+    if 'TRUE'.startswith(ua):
+       return True
+    elif 'FALSE'.startswith(ua):
+       return False
+    else:
+       pass
 
 def find_span(word2idx, start, end):
     lst = []
@@ -185,108 +189,137 @@ def find_span(word2idx, start, end):
                 break
     return lst
 
+def trainer_wrapper(model1, model2, dataset1, dataset2):
+    data_collator = DefaultDataCollator()
+
+    training_args = TrainingArguments(
+        output_dir="./logs/",
+        evaluation_strategy="no",
+        learning_rate=2e-5,
+        per_device_train_batch_size=2,
+        num_train_epochs=3,
+        weight_decay=0.01,
+        no_cuda=False,
+    )
+    trainer = Trainer(
+        model=model1.to(device),
+        args=training_args,
+        train_dataset=dataset1,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+
+    )
+
+    trainer2 = Trainer(model=model2.to(device),
+                       args=training_args,
+                       train_dataset=dataset2,
+                       tokenizer=tokenizer,
+                       data_collator=data_collator,
+                       )
+    return trainer, trainer2
+
+
 if __name__ == "__main__":
         parser = argparse.ArgumentParser(description="help")
         parser.add_argument("--data_path", type=str, help="this is your data directory")
         parser.add_argument("--ans_model", type=str, help="this is your ans_model directory")
         parser.add_argument("--evi_model", type=str, help="this is your evi_model directory")
         parser.add_argument("--pred_data", type=str, help="this is your data directory")
+        parser.add_argument("--train", type=str, help="train model")
+        parser.add_argument("--predict",type=str, help='predict')
+
         args = parser.parse_args()
         device = torch.device("cuda:0")
         print("Found device: {}".format(device))
-        model = AutoModelForQuestionAnswering.from_pretrained(args.ans_model).to(device)
-        model.to(device)
-        model2 = AutoModelForQuestionAnswering.from_pretrained(args.evi_model).to(device)
-        model2.to(device)
+        directory = "./results"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
         tokenizer = AutoTokenizer.from_pretrained(args.ans_model)
-        #data = data_loader(args.data_path)
-        data =drcd_loader(args.data_path)
+        data = data_loader(args.data_path)
+        # data =drcd_loader(args.data_path)
         pred_data = data_loader(args.pred_data)
 
-        ids, input_ids, token_type_ids, attention_mask, \
-        start_positions, end_positions, evi_start_positions, evi_end_positions = preprocess_function(data, tokenizer)
+        
+        if t_or_f(args.train):
+            print("================ Start training ================ \n")
+            model = AutoModelForQuestionAnswering.from_pretrained(args.ans_model).to(device)
+            model.to(device)
+            model2 = AutoModelForQuestionAnswering.from_pretrained(args.evi_model).to(device)
+            model2.to(device)
 
-        p_ids, p_input_ids, p_token_type_ids, p_attention_mask, \
-        p_start_positions, p_end_positions, p_evi_start_positions, p_evi_end_positions = preprocess_function(pred_data, tokenizer)
+            ids, input_ids, token_type_ids, attention_mask, \
+            start_positions, end_positions, evi_start_positions, evi_end_positions = preprocess_function(data,
+                                                                                                         tokenizer)
 
-        dataset = Dataset.from_dict({"ids":ids, "input_ids": input_ids, "token_type_ids":token_type_ids,
-                                        "attention_mask": attention_mask, "start_positions": start_positions,
-                                        "end_positions": end_positions})
-        dataset2 = Dataset.from_dict({"ids":ids, "input_ids": input_ids, "token_type_ids":token_type_ids,
-                                        "attention_mask": attention_mask, "start_positions": evi_start_positions,
-                                        "end_positions": evi_end_positions})
+            dataset = Dataset.from_dict(
+                {"ids": ids, "input_ids": input_ids, "token_type_ids": token_type_ids,
+                 "attention_mask": attention_mask, "start_positions": start_positions,
+                 "end_positions": end_positions})
+            dataset2 = Dataset.from_dict(
+                {"ids": ids, "input_ids": input_ids, "token_type_ids": token_type_ids,
+                 "attention_mask": attention_mask, "start_positions": evi_start_positions,
+                 "end_positions": evi_end_positions})
 
-        pred_dataset = Dataset.from_dict({"ids":p_ids, "input_ids": p_input_ids, "token_type_ids":p_token_type_ids,
-                                        "attention_mask": p_attention_mask, "start_positions": p_start_positions,
-                                        "end_positions": p_end_positions})
+            trainer, trainer2 = trainer_wrapper(model, model2, dataset, dataset2)
 
-        pred_dataset2 = Dataset.from_dict({"ids": p_ids, "input_ids": p_input_ids, "token_type_ids": p_token_type_ids,
-                                          "attention_mask": p_attention_mask, "start_positions": p_evi_start_positions,
-                                          "end_positions": p_evi_end_positions})
+            trainer.train()
+            print("start trainer2 \n")
+            trainer2.train()
 
-        data_collator = DefaultDataCollator()
+            trainer.save_model(directory + '/answer.model')
+            trainer2.save_model(directory + '/evidence.model')
 
-        training_args = TrainingArguments(
-            output_dir="./results",
-            evaluation_strategy="no",
-            learning_rate=2e-5,
-            per_device_train_batch_size=4,
-            num_train_epochs=3,
-            weight_decay=0.01,
-            no_cuda=False,
-        )
-        trainer = Trainer(
-            model=model.to(device),
-            args=training_args,
-            train_dataset=dataset,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
+        if t_or_f(args.predict):
+            print("================ Start predicting ================ \n")
+            ans_model = AutoModelForQuestionAnswering.from_pretrained(directory+'/answer.model', return_dict=False)
+            evi_model = AutoModelForQuestionAnswering.from_pretrained(directory+'/evidence.model', return_dict=False)
 
-        )
+            p_ids, p_input_ids, p_token_type_ids, p_attention_mask, \
+            p_start_positions, p_end_positions, p_evi_start_positions, p_evi_end_positions = preprocess_function(
+                pred_data,
+                tokenizer)
 
-        trainer2 = Trainer(model=model2.to(device),
-            args=training_args,
-            train_dataset=dataset2,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
+            pred_dataset = Dataset.from_dict(
+                {"ids": p_ids, "input_ids": p_input_ids, "token_type_ids": p_token_type_ids,
+                 "attention_mask": p_attention_mask, "start_positions": p_start_positions,
+                 "end_positions": p_end_positions})
 
-        )
+            pred_dataset2 = Dataset.from_dict(
+                {"ids": p_ids, "input_ids": p_input_ids, "token_type_ids": p_token_type_ids,
+                 "attention_mask": p_attention_mask, "start_positions": p_evi_start_positions,
+                 "end_positions": p_evi_end_positions})
 
-        trainer.train()
-        print("start trainer2 \n")
-        trainer2.train()
+            trainer, trainer2 = trainer_wrapper(ans_model, evi_model, pred_dataset, pred_dataset2)
+            
+            predictions, _, _ = trainer.predict(pred_dataset)
+            evi_predictions,_,_ = trainer2.predict(pred_dataset2)
 
+            start_pred, end_pred = predictions
+            start_evi_pred, end_evi_pred = evi_predictions
 
-        predictions, _, _ = trainer.predict(pred_dataset)
-        evi_predictions,_,_ = trainer2.predict(pred_dataset2)
-        start_pred, end_pred = predictions
-        start_evi_pred, end_evi_pred = evi_predictions
+            pred = {}
+            a_pred_start, a_pred_end = get_pred_position(torch.tensor(start_pred).to(device), torch.tensor(end_pred).to(device), device)
+            e_pred_start, e_pred_end = get_pred_position(torch.tensor(start_evi_pred).to(device), torch.tensor(end_evi_pred).to(device), device)
 
-        pred = {}
-        a_pred_start, a_pred_end = get_pred_position(torch.tensor(start_pred).to(device), torch.tensor(end_pred).to(device), device)
-        e_pred_start, e_pred_end = get_pred_position(torch.tensor(start_evi_pred).to(device), torch.tensor(end_evi_pred).to(device), device)
+            for i in range(len(a_pred_end)):
+                sample = {}
+                out = {}
+                a_pred_s = a_pred_start[i]
+                a_pred_e = a_pred_end[i]
+                e_pred_s = e_pred_start[i]
+                e_pred_e = e_pred_end[i]
 
-        for i in range(len(a_pred_end)):
-            sample = {}
-            out = {}
-            a_pred_s = a_pred_start[i]
-            a_pred_e = a_pred_end[i]
-            e_pred_s = e_pred_start[i]
-            e_pred_e = e_pred_end[i]
+                #answer_id_span = find_span(word2idx=dataset['input_ids'][i], start=a_pred_s, end=a_pred_e)
+                #evi_id_span = find_span(word2idx=dataset['input_ids'][i], start=e_pred_s, end=e_pred_e)
+                answer_id_span = find_span(word2idx=pred_dataset['input_ids'][i], start=a_pred_s, end=a_pred_e)
+                evi_id_span = find_span(word2idx=pred_dataset2['input_ids'][i], start=e_pred_s, end=e_pred_e)
+                a_span = span_decoder(answer_id_span, tokenizer)
+                e_span = span_decoder(evi_id_span, tokenizer)
+                sample['answer'] = a_span
+                sample['evidence'] = e_span
+                out[pred_dataset['ids'][i]] = sample
+                pred.update(out)
+            with open(directory+"/output_file.json", "w") as outfile:
+                json.dump(pred, outfile, ensure_ascii=False)
 
-            #answer_id_span = find_span(word2idx=dataset['input_ids'][i], start=a_pred_s, end=a_pred_e)
-            #evi_id_span = find_span(word2idx=dataset['input_ids'][i], start=e_pred_s, end=e_pred_e)
-            answer_id_span = find_span(word2idx=pred_dataset['input_ids'][i], start=a_pred_s, end=a_pred_e)
-            evi_id_span = find_span(word2idx=pred_dataset2['input_ids'][i], start=e_pred_s, end=e_pred_e)
-            a_span = span_decoder(answer_id_span, tokenizer)
-            e_span = span_decoder(evi_id_span, tokenizer)
-            sample['answer'] = a_span
-            sample['evidence'] = e_span
-            out[pred_dataset['ids'][i]] = sample
-            pred.update(out)
-        with open("output.json", "w") as outfile:
-            json.dump(pred, outfile, ensure_ascii=False)
-
-        trainer.save_model('./answer.model')
-        trainer2.save_model('./evidence.model')
