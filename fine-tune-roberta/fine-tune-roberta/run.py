@@ -196,7 +196,7 @@ def trainer_wrapper(model1, model2, dataset1, dataset2):
         output_dir="./logs/",
         evaluation_strategy="no",
         learning_rate=2e-5,
-        per_device_train_batch_size=2,
+        per_device_train_batch_size=8,
         num_train_epochs=3,
         weight_decay=0.01,
         no_cuda=False,
