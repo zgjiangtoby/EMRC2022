@@ -1,5 +1,7 @@
 # HOWTO
 
+0. conda安装环境qust.yaml
+
 1. 训练模式：`python run.py --data_path 微调数据路径 --ans_model dir_to_/chinese-roberta-wwm-ext-large --evi_model dir_to_/chinese-roberta-wwm-ext-large --pred_data dir_to/expmrc-cmrc2018-dev.json --train True --predict False`
 
 2. 预测模式：`python run.py --data_path 微调数据路径 --ans_model dir_to_/ans_model --evi_model dir_to_/evi_model --pred_data dir_to/expmrc-cmrc2018-dev.json --train False --predict True`
